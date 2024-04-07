@@ -1,7 +1,8 @@
 #include <iostream>
-#include "/opt/homebrew/Cellar/libomp/17.0.6/include/omp.h"
 #include <chrono>
-
+#include <random>
+#include <vector>
+#include "tbb/tbb.h"
 
 using namespace std;
 
@@ -19,14 +20,16 @@ void printMatrix(double** matrix, double* answerMatrix) {
 
 void matrixTransformation(double** matrix, double* answerMatrix) {
     for (int k = 0; k < lengthMatrix - 1; k++) {
-        #pragma omp parallel for shared(matrix, answerMatrix)//распараллелить цикл, используя общие данные matrix и answerMatrix, которые могут быть доступны для чтения и записи из всех потоков, участвующих в этой параллельной области
-        for (int i = k + 1; i < lengthMatrix; i++) {
-            double temp = matrix[i][k] / matrix[k][k];
-            for (int j = k; j < lengthMatrix; j++) {
-                matrix[i][j] -= temp * matrix[k][j];
-            }
-            answerMatrix[i] -= temp * answerMatrix[k];
-        }
+        tbb::parallel_for(tbb::blocked_range<int>(k + 1, lengthMatrix),
+            [&matrix, &answerMatrix, k](const tbb::blocked_range<int>& r) {
+                for (int i = r.begin(); i != r.end(); ++i) {
+                    double temp = matrix[i][k] / matrix[k][k];
+                    for (int j = k; j < lengthMatrix; j++) {
+                        matrix[i][j] -= temp * matrix[k][j];
+                    }
+                    answerMatrix[i] -= temp * answerMatrix[k];
+                }
+        });
     }
 }
 
@@ -65,10 +68,8 @@ int main() {
     // srand(time(NULL));
     
     double** matrix = createMatrixSecond(lengthMatrix);
-
     double* answerMatrix = createMatrixFirst(lengthMatrix);
-
-    double* solution = new double [3];
+    double* solution = new double [lengthMatrix];
 
     cout << "Исходная система уравнений:" << endl;
     printMatrix(matrix, answerMatrix);
@@ -85,7 +86,6 @@ int main() {
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double> solving_time = end - start;
     cout << "Время выполения: " << solving_time.count() << endl;
-
 
     cout << "\nРешение СЛАУ:" << endl;
     for (int i = 0; i < lengthMatrix; i++) {
